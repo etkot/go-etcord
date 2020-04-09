@@ -1,0 +1,11 @@
+*.exe
+*.exe~
+*.so
+*.test
+*.out
+*.bak
+etcord
+
+.idea/
+.vscode/
+build/*
