@@ -1,4 +1,4 @@
-module go-etcord
+module etcord
 
 go 1.13
 
