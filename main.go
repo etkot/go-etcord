@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"etcord/types"
 	"net"
 	"os"
 	"os/signal"
@@ -14,15 +15,15 @@ type Server struct {
 	mu sync.Mutex
 	wg sync.WaitGroup
 
-	stop chan struct{}
-	port string
+	stop    chan struct{}
+	port    string
 	clients map[string]net.Conn // TODO
 }
 
 func NewServer(port string) *Server {
 	return &Server{
-		port: port,
-		stop: make(chan struct{}),
+		port:    port,
+		stop:    make(chan struct{}),
 		clients: make(map[string]net.Conn),
 	}
 }
@@ -85,16 +86,16 @@ func (s *Server) handleConn(c net.Conn) {
 			log.Error(err)
 			break
 		}
-		log.Debugf("Read %d bytes: [%x]", n, tmp[:n])
+		log.Debugf("Read %d bytes: [% x]", n, tmp[:n])
 
 		b := bytes.NewBuffer(tmp[:n])
-		var msgs []*Msg
+		var msgs []types.Msg
 		for {
 			if b.Len() == 0 {
 				break
 			}
-			m := NewMsg()
-			if err := m.Deserialize(b); err != nil {
+			var m types.Msg
+			if m, err = Deserialize(b); err != nil {
 				log.Errorf("Failed to deserialize msg from buffer: %s", err)
 				break
 			}
@@ -111,7 +112,7 @@ func (s *Server) handleConn(c net.Conn) {
 	}
 }
 
-func (s *Server) msgHandler(m *Msg) {
+func (s *Server) msgHandler(m types.Msg) {
 	log.Infof("Recv msg: %s", m)
 }
 

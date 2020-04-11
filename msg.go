@@ -2,68 +2,126 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+
+	"etcord/types"
 )
 
 type MsgType int
 
 const (
-	Error MsgType = iota
-	GetClients
-	GetChannels
-	GetTextHistory
+	ErrorType MsgType = iota
+	LoginType
+	GetClientsType
+	GetChannelsType
+	GetTextHistoryType
 
-	ChatMessage MsgType = iota + 10
+	ChatMessageType MsgType = iota + 10
 
-	VoiceChannelJoin MsgType = iota + 20
-	VoiceChannelLeave
+	VoiceChannelJoinType MsgType = iota + 20
+	VoiceChannelLeaveType
+)
+
+const (
+	GetClientsAll = 0
+	GetClientsOne = 1
+	GetClientsMany = 2
 )
 
 func (mt MsgType) String() string {
 	switch mt {
-	case Error:
+	case ErrorType:
 		return "Error"
-	case GetClients:
+	case LoginType:
+		return "Login"
+	case GetClientsType:
 		return "GetClients"
-	case GetChannels:
+	case GetChannelsType:
 		return "GetChannels"
-	case GetTextHistory:
+	case GetTextHistoryType:
 		return "GetTextHistory"
-	case ChatMessage:
+	case ChatMessageType:
 		return "ChatMessage"
-	case VoiceChannelJoin:
+	case VoiceChannelJoinType:
 		return "VoiceChannelJoin"
-	case VoiceChannelLeave:
+	case VoiceChannelLeaveType:
 		return "VoiceChannelLeave"
 	}
 	return ""
 }
 
-type Msg struct {
-	Type MsgType
-	Content []byte
-}
+// Deserializes deserializes a raw packet to an Etcord protocol message
+// TODO errors
+func Deserialize(tmp *bytes.Buffer) (types.Msg, error) {
+	lb := tmp.Next(2)
+	if len(lb) != 2 {
+		return nil, fmt.Errorf("invalid packet length")
+	}
+	msgLen := binary.BigEndian.Uint16(lb)
 
-func NewMsg() *Msg {
-	return &Msg{}
-}
+	buf := bytes.NewBuffer(tmp.Next(int(msgLen)))
 
-func (m *Msg) String() string {
-	return fmt.Sprintf("[%s][%s]", m.Type, string(m.Content))
-}
-
-func (m *Msg) Serialize() ([]byte, error) {
-	return nil, nil
-}
-
-func (m *Msg) Deserialize(buf *bytes.Buffer) error {
 	tb, err := buf.ReadByte()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	m.Type = MsgType(tb)
+	t := MsgType(tb)
 
-	// TODO
+	// TODO move to separate functions
+	switch t {
+	case ErrorType:
+		m := &types.Error{}
 
-	return nil
+		b := buf.Next(2)
+		if len(b) != 2 {
+			return nil, fmt.Errorf("invalid field length")
+		}
+		m.Code = int16(binary.BigEndian.Uint16(b))
+
+		m.Message = buf.String()
+
+		return m, nil
+
+	case GetClientsType:
+		m := &types.GetClientsRequest{}
+
+		b, err := buf.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		m.Type = b
+
+		switch m.Type {
+		case GetClientsAll:
+			break
+
+		case GetClientsOne:
+			b := buf.Next(2)
+			if len(b) != 2 {
+				return nil, fmt.Errorf("invalid field length")
+			}
+			m.ClientID = binary.BigEndian.Uint16(b)
+
+		case GetClientsMany:
+			b := buf.Next(2)
+			if len(b) != 2 {
+				return nil, fmt.Errorf("invalid field length")
+			}
+			m.Count = binary.BigEndian.Uint16(b)
+			for i := 0; i < int(m.Count); i++ {
+				b := buf.Next(2)
+				if len(b) != 2 {
+					return nil, fmt.Errorf("invalid field length")
+				}
+				id := binary.BigEndian.Uint16(b)
+				m.ClientIDs = append(m.ClientIDs, id)
+			}
+		}
+
+		return m, nil
+	}
+	// TODO rest of the messages
+
+	return nil, fmt.Errorf("unknown type")
 }
