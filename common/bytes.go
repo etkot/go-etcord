@@ -10,6 +10,20 @@ type Buffer struct {
 	*bytes.Buffer
 }
 
+func NewBuffer(buf []byte) Buffer {
+	return Buffer{Buffer: bytes.NewBuffer(buf)}
+}
+
+func (buf Buffer) WriteUint16(n uint16) {
+	tmp := make([]byte, 2)
+	binary.BigEndian.PutUint16(tmp, n)
+	buf.Write(tmp)
+}
+
+func (buf Buffer) WriteInt16(n int16) {
+	buf.WriteUint16(uint16(n))
+}
+
 func (buf Buffer) ReadUint32() (uint32, error) {
 	b := buf.Next(4)
 	if len(b) != 4 {
