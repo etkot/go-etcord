@@ -20,6 +20,25 @@ type Server struct {
 	clients map[string]net.Conn // TODO
 }
 
+type Client struct {
+	UserID uint16 `json:"userId"`
+	Name   string `json:"name"`
+}
+
+type Channel struct {
+	ChannelID uint16 `json:"channelId"`
+	ParentID  uint   `json:"parentId"`
+	Name      string `json:"name"`
+	Type      uint8  `json:"type"`
+}
+
+type Message struct {
+	MessageId uint16 `json:"messageId"`
+	SenderID uint16 `json:"senderId"`
+	SenderName uint16 `json:"senderName"`
+	Content string `json:"content"`
+}
+
 func NewServer(port string) *Server {
 	return &Server{
 		port:    port,
