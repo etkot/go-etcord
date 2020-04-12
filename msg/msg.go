@@ -128,7 +128,7 @@ func (m *Error) Serialize() []byte {
 	l := 2 + len(m.Message)
 	buf := common.NewBuffer(make([]byte, 0, l))
 	buf.WriteUint16(m.Code)
-	buf.Write([]byte(m.Message))
+	buf.WriteNullTerminatedString(m.Message)
 	return buf.Bytes()
 }
 
@@ -137,7 +137,7 @@ func (m *Error) Deserialize(buf common.Buffer) error {
 	if m.Code, err = buf.ReadUint16(); err != nil {
 		return err
 	}
-	m.Message = buf.String()
+	m.Message = buf.ReadNullTerminatedString()
 	return nil
 }
 
@@ -151,8 +151,7 @@ func (m *LoginRequest) Serialize() []byte {
 }
 
 func (m *LoginRequest) Deserialize(buf common.Buffer) error {
-	m.Name = buf.String()
-	if len(m.Name) == 0 {
+	if m.Name = buf.ReadNullTerminatedString(); len(m.Name) == 0 {
 		return fmt.Errorf("empty name")
 	}
 	return nil
@@ -206,7 +205,7 @@ func (m *GetClientsRequest) Deserialize(buf common.Buffer) error {
 }
 
 type GetClientsResponse struct {
-	Count   uint16        `json:"count"`
+	Count   uint16         `json:"count"`
 	Clients []types.Client `json:"clients"`
 }
 
@@ -222,7 +221,7 @@ func (m *GetChannelsRequest) Serialize() []byte { return nil } // TODO
 func (m *GetChannelsRequest) Deserialize(common.Buffer) error { return nil }
 
 type GetChannelsResponse struct {
-	Count    uint16         `json:"count"`
+	Count    uint16          `json:"count"`
 	Channels []types.Channel `json:"channels"`
 }
 
@@ -253,8 +252,8 @@ func (m *GetChatHistoryRequest) Deserialize(buf common.Buffer) error {
 }
 
 type GetChatHistoryResponse struct {
-	ChannelID uint16         `json:"channelId"`
-	Count     uint16         `json:"count"`
+	ChannelID uint16          `json:"channelId"`
+	Count     uint16          `json:"count"`
 	Messages  []types.Message `json:"messages"`
 }
 
@@ -271,7 +270,7 @@ func (m *ChatMessageRequest) Serialize() []byte {
 	l := 2 + len(m.Content)
 	buf := common.NewBuffer(make([]byte, 0, l))
 	buf.WriteUint16(m.ChannelID)
-	buf.Write([]byte(m.Content))
+	buf.WriteNullTerminatedString(m.Content)
 	return buf.Bytes()
 }
 
@@ -280,15 +279,14 @@ func (m *ChatMessageRequest) Deserialize(buf common.Buffer) error {
 	if m.ChannelID, err = buf.ReadUint16(); err != nil {
 		return err
 	}
-	m.Content = buf.String()
-	if len(m.Content) == 0 {
+	if m.Content = buf.ReadNullTerminatedString(); len(m.Content) == 0 {
 		return fmt.Errorf("empty message")
 	}
 	return nil
 }
 
 type ChatMessageResponse struct {
-	ChannelID uint16       `json:"channelId"`
+	ChannelID uint16        `json:"channelId"`
 	Message   types.Message `json:"message"`
 }
 
@@ -298,9 +296,8 @@ func (m *ChatMessageResponse) Serialize() []byte {
 	buf.WriteUint16(m.ChannelID)
 	buf.WriteUint16(m.Message.MessageID)
 	buf.WriteUint16(m.Message.SenderID)
-	buf.Write([]byte(m.Message.SenderName))
-	buf.Write([]byte{0})
-	buf.Write([]byte(m.Message.Content))
+	buf.WriteNullTerminatedString(m.Message.SenderName)
+	buf.WriteNullTerminatedString(m.Message.Content)
 	return buf.Bytes()
 }
 
@@ -310,29 +307,18 @@ func (m *ChatMessageResponse) Deserialize(buf common.Buffer) error {
 	if m.ChannelID, err = buf.ReadUint16(); err != nil {
 		return err
 	}
-
 	if m.Message.MessageID, err = buf.ReadUint16(); err != nil {
 		return err
 	}
 	if m.Message.SenderID, err = buf.ReadUint16(); err != nil {
 		return err
 	}
-
-	var nameBytes []byte
-	for {
-		b, err := buf.ReadByte()
-		if err != nil {
-			return err
-		}
-		if b == 0 {
-			break
-		}
-		nameBytes = append(nameBytes, b)
+	if m.Message.SenderName = buf.ReadNullTerminatedString(); len(m.Message.SenderName) == 0 {
+		return fmt.Errorf("empty sender name")
 	}
-	m.Message.SenderName = string(nameBytes)
-
-	m.Message.Content = buf.String()
-
+	if m.Message.Content = buf.ReadNullTerminatedString(); len(m.Message.Content) == 0 {
+		return fmt.Errorf("empty content")
+	}
 	return nil
 }
 
