@@ -119,21 +119,21 @@ func Deserialize(tmp common.Buffer) (Msg, error) {
 }
 
 type Error struct {
-	Code    int16  `json:"id"`
+	Code    uint16 `json:"id"`
 	Message string `json:"message"`
 }
 
 func (m *Error) Serialize() []byte {
 	l := 2 + len(m.Message)
 	buf := common.NewBuffer(make([]byte, 0, l))
-	buf.WriteInt16(m.Code)
+	buf.WriteUint16(m.Code)
 	buf.Write([]byte(m.Message))
 	return buf.Bytes()
 }
 
 func (m *Error) Deserialize(buf common.Buffer) error {
 	var err error
-	if m.Code, err = buf.ReadInt16(); err != nil {
+	if m.Code, err = buf.ReadUint16(); err != nil {
 		return err
 	}
 	m.Message = buf.String()
