@@ -1,12 +1,12 @@
 package main
 
 import (
-	"bytes"
-	"etcord/types"
 	"net"
 	"os"
 	"os/signal"
 	"sync"
+
+	"etcord/common"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -33,10 +33,10 @@ type Channel struct {
 }
 
 type Message struct {
-	MessageId uint16 `json:"messageId"`
-	SenderID uint16 `json:"senderId"`
+	MessageId  uint16 `json:"messageId"`
+	SenderID   uint16 `json:"senderId"`
 	SenderName uint16 `json:"senderName"`
-	Content string `json:"content"`
+	Content    string `json:"content"`
 }
 
 func NewServer(port string) *Server {
@@ -107,14 +107,14 @@ func (s *Server) handleConn(c net.Conn) {
 		}
 		log.Debugf("Read %d bytes: [% x]", n, tmp[:n])
 
-		b := bytes.NewBuffer(tmp[:n])
-		var msgs []types.Msg
+		buf := common.NewBuffer(tmp[:n])
+		var msgs []Msg
 		for {
-			if b.Len() == 0 {
+			if buf.Len() == 0 {
 				break
 			}
-			var m types.Msg
-			if m, err = Deserialize(b); err != nil {
+			var m Msg
+			if m, err = Deserialize(buf); err != nil {
 				log.Errorf("Failed to deserialize msg from buffer: %s", err)
 				break
 			}
@@ -131,7 +131,7 @@ func (s *Server) handleConn(c net.Conn) {
 	}
 }
 
-func (s *Server) msgHandler(m types.Msg) {
+func (s *Server) msgHandler(m Msg) {
 	log.Infof("Recv msg: %s", m)
 }
 
