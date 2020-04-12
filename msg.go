@@ -1,13 +1,17 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
-	"etcord/common"
 	"fmt"
+	"math"
+
+	"etcord/common"
 )
 
-type MsgType int
+const (
+	PacketHeaderLen = 3 // length + id fields
+)
+
+type MsgType uint8
 
 const (
 	ErrorType MsgType = iota
@@ -25,76 +29,10 @@ const (
 )
 
 type Msg interface {
-	//Serialize() ([]byte, error)
+	Serialize() []byte
 	Deserialize(common.Buffer) error
 	//String() string
 }
-
-type Error struct {
-	Code    int16  `json:"id"`
-	Message string `json:"message"`
-}
-
-type LoginRequest struct {
-	Name string `json:"name"`
-}
-
-type GetClientsRequest struct {
-	Type      uint8    `json:"type"`
-	ClientID  uint16   `json:"clientId,omitempty"`
-	Count     uint16   `json:"count,omitempty"`
-	ClientIDs []uint16 `json:"clientIds,omitempty"`
-}
-
-type GetClientsResponse struct {
-	Count   uint16   `json:"count"`
-	Clients []Client `json:"clients"`
-}
-
-type GetChannelsRequest struct {
-}
-
-type GetChannelsResponse struct {
-	Count    uint16    `json:"count"`
-	Channels []Channel `json:"channels"`
-}
-
-type GetChatHistoryRequest struct {
-	ChannelID uint16 `json:"channelId"`
-	Count uint16 `json:"count"`
-	OffsetID uint16 `json:"offsetId"`
-}
-
-type GetChatHistoryResponse struct {
-	ChannelID uint16 `json:"channelId"`
-	Count uint16 `json:"count"`
-	Messages []Message `json:"messages"`
-}
-
-type ChatMessageRequest struct {
-	ChannelID uint16 `json:"channelId"`
-	Content string `json:"content"`
-}
-
-type ChatMessageResponse struct {
-	ChannelID uint16 `json:"channelId"`
-	Message Message `json:"message"`
-}
-
-type VoiceChannelJoinRequest struct {
-	ChannelID uint16 `json:"channelId"`
-}
-
-type VoiceChannelJoinResponse struct {
-	ChannelID uint16 `json:"channelId"`
-	ClientID uint16 `json:"clientId"`
-}
-
-const (
-	GetClientsAll = 0
-	GetClientsOne = 1
-	GetClientsMany = 2
-)
 
 func (mt MsgType) String() string {
 	switch mt {
@@ -122,15 +60,29 @@ func (mt MsgType) String() string {
 	return ""
 }
 
-// Deserializes deserializes a raw packet to an Etcord protocol message
-func Deserialize(tmp *bytes.Buffer) (Msg, error) {
-	lb := tmp.Next(2)
-	if len(lb) != 2 {
-		return nil, fmt.Errorf("invalid packet length")
+// Serialize serializes an Etcord protocol message to a raw packet
+func Serialize(m Msg) ([]byte, error) {
+	mb := m.Serialize()
+	if len(mb) > math.MaxUint16 {
+		return nil, fmt.Errorf("packet content length overflows uint16")
 	}
-	msgLen := binary.BigEndian.Uint16(lb)
 
-	buf := common.Buffer{bytes.NewBuffer(tmp.Next(int(msgLen)))}
+	buf := common.NewBuffer(make([]byte, 0, PacketHeaderLen+len(mb)))
+	buf.WriteUint16(1 + uint16(len(mb)))
+	buf.Write([]byte{getPacketID(m)})
+	buf.Write(mb)
+
+	return buf.Bytes(), nil
+}
+
+// Deserializes deserializes a raw packet to an Etcord protocol message
+func Deserialize(tmp common.Buffer) (Msg, error) {
+	msgLen, err := tmp.ReadUint16()
+	if err != nil {
+		return nil, err
+	}
+
+	buf := common.NewBuffer(tmp.Next(int(msgLen)))
 
 	tb, err := buf.ReadByte()
 	if err != nil {
@@ -166,6 +118,19 @@ func Deserialize(tmp *bytes.Buffer) (Msg, error) {
 	return m, nil
 }
 
+type Error struct {
+	Code    int16  `json:"id"`
+	Message string `json:"message"`
+}
+
+func (m *Error) Serialize() []byte {
+	l := 2 + len(m.Message)
+	buf := common.NewBuffer(make([]byte, 0, l))
+	buf.WriteInt16(m.Code)
+	buf.Write([]byte(m.Message))
+	return buf.Bytes()
+}
+
 func (m *Error) Deserialize(buf common.Buffer) error {
 	var err error
 	if m.Code, err = buf.ReadInt16(); err != nil {
@@ -175,6 +140,15 @@ func (m *Error) Deserialize(buf common.Buffer) error {
 	return nil
 }
 
+type LoginRequest struct {
+	Name string `json:"name"`
+}
+
+func (m *LoginRequest) Serialize() []byte {
+	b := []byte(m.Name)
+	return b
+}
+
 func (m *LoginRequest) Deserialize(buf common.Buffer) error {
 	m.Name = buf.String()
 	if len(m.Name) == 0 {
@@ -182,6 +156,21 @@ func (m *LoginRequest) Deserialize(buf common.Buffer) error {
 	}
 	return nil
 }
+
+const (
+	GetClientsAll  = 0
+	GetClientsOne  = 1
+	GetClientsMany = 2
+)
+
+type GetClientsRequest struct {
+	Type      uint8    `json:"type"`
+	ClientID  uint16   `json:"clientId,omitempty"`
+	Count     uint16   `json:"count,omitempty"`
+	ClientIDs []uint16 `json:"clientIds,omitempty"`
+}
+
+func (m *GetClientsRequest) Serialize() []byte { return nil } // TODO
 
 func (m *GetClientsRequest) Deserialize(buf common.Buffer) error {
 	var err error
@@ -215,7 +204,38 @@ func (m *GetClientsRequest) Deserialize(buf common.Buffer) error {
 	return nil
 }
 
+type GetClientsResponse struct {
+	Count   uint16   `json:"count"`
+	Clients []Client `json:"clients"`
+}
+
+func (m *GetClientsResponse) Serialize() []byte { return nil } // TODO
+
+func (m *GetClientsResponse) Deserialize(common.Buffer) error { return nil }
+
+type GetChannelsRequest struct {
+}
+
+func (m *GetChannelsRequest) Serialize() []byte { return nil } // TODO
+
 func (m *GetChannelsRequest) Deserialize(common.Buffer) error { return nil }
+
+type GetChannelsResponse struct {
+	Count    uint16    `json:"count"`
+	Channels []Channel `json:"channels"`
+}
+
+func (m *GetChannelsResponse) Serialize() []byte { return nil } // TODO
+
+func (m *GetChannelsResponse) Deserialize(common.Buffer) error { return nil }
+
+type GetChatHistoryRequest struct {
+	ChannelID uint16 `json:"channelId"`
+	Count     uint16 `json:"count"`
+	OffsetID  uint16 `json:"offsetId"`
+}
+
+func (m *GetChatHistoryRequest) Serialize() []byte { return nil } // TODO
 
 func (m *GetChatHistoryRequest) Deserialize(buf common.Buffer) error {
 	var err error
@@ -231,6 +251,23 @@ func (m *GetChatHistoryRequest) Deserialize(buf common.Buffer) error {
 	return nil
 }
 
+type GetChatHistoryResponse struct {
+	ChannelID uint16    `json:"channelId"`
+	Count     uint16    `json:"count"`
+	Messages  []Message `json:"messages"`
+}
+
+func (m *GetChatHistoryResponse) Serialize() []byte { return nil } // TODO
+
+func (m *GetChatHistoryResponse) Deserialize(common.Buffer) error { return nil } // TODO
+
+type ChatMessageRequest struct {
+	ChannelID uint16 `json:"channelId"`
+	Content   string `json:"content"`
+}
+
+func (m *ChatMessageRequest) Serialize() []byte { return nil } // TODO
+
 func (m *ChatMessageRequest) Deserialize(buf common.Buffer) error {
 	var err error
 	if m.ChannelID, err = buf.ReadUint16(); err != nil {
@@ -243,6 +280,21 @@ func (m *ChatMessageRequest) Deserialize(buf common.Buffer) error {
 	return nil
 }
 
+type ChatMessageResponse struct {
+	ChannelID uint16  `json:"channelId"`
+	Message   Message `json:"message"`
+}
+
+func (m *ChatMessageResponse) Serialize() []byte { return nil } // TODO
+
+func (m *ChatMessageResponse) Deserialize(common.Buffer) error { return nil }
+
+type VoiceChannelJoinRequest struct {
+	ChannelID uint16 `json:"channelId"`
+}
+
+func (m *VoiceChannelJoinRequest) Serialize() []byte { return nil } // TODO
+
 func (m *VoiceChannelJoinRequest) Deserialize(buf common.Buffer) error {
 	var err error
 	if m.ChannelID, err = buf.ReadUint16(); err != nil {
@@ -251,3 +303,41 @@ func (m *VoiceChannelJoinRequest) Deserialize(buf common.Buffer) error {
 	return nil
 }
 
+type VoiceChannelJoinResponse struct {
+	ChannelID uint16 `json:"channelId"`
+	ClientID  uint16 `json:"clientId"`
+}
+
+func (m *VoiceChannelJoinResponse) Serialize() []byte { return nil } // TODO
+
+func (m *VoiceChannelJoinResponse) Deserialize(common.Buffer) error { return nil } // TODO
+
+func getPacketID(m Msg) uint8 {
+	switch m.(type) {
+	case *Error:
+		return uint8(ErrorType)
+	case *LoginRequest:
+		return uint8(LoginType)
+	case *GetClientsRequest:
+		return uint8(GetClientsType)
+	case *GetClientsResponse:
+		return uint8(GetClientsType)
+	case *GetChannelsRequest:
+		return uint8(GetChannelsType)
+	case *GetChannelsResponse:
+		return uint8(GetChannelsType)
+	case *GetChatHistoryRequest:
+		return uint8(GetChatHistoryType)
+	case *GetChatHistoryResponse:
+		return uint8(GetChatHistoryType)
+	case *ChatMessageRequest:
+		return uint8(ChatMessageType)
+	case *ChatMessageResponse:
+		return uint8(ChatMessageType)
+	case *VoiceChannelJoinRequest:
+		return uint8(VoiceChannelJoinType)
+	case *VoiceChannelJoinResponse:
+		return uint8(VoiceChannelJoinType)
+	}
+	return 0
+}
