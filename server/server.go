@@ -21,7 +21,6 @@ type Server struct {
 	lastClientID int
 	clients      map[string]*Client
 	channels     map[uint16]*Channel
-	out          chan msg.Msg // outgoing messages
 }
 
 func NewServer(port string) *Server {
@@ -30,7 +29,6 @@ func NewServer(port string) *Server {
 		stop:     make(chan struct{}),
 		clients:  make(map[string]*Client),
 		channels: make(map[uint16]*Channel),
-		out:      make(chan msg.Msg),
 	}
 }
 
