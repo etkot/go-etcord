@@ -75,7 +75,7 @@ func NewChannel(channelType types.ChannelType) *Channel {
 }
 
 func (s *Server) Start() {
-	s.wg.Add(3) // XXX TODO
+	s.wg.Add(2) // XXX TODO
 	go s.tcpServer()
 
 	log.Info("Starting Etcord server")
@@ -113,6 +113,30 @@ func (s *Server) AddChannel() *Channel {
 	return chn
 }
 
+func (s *Server) SendToOne(c *Client, m msg.Msg) error {
+	b, err := msg.Serialize(m)
+	if err != nil {
+		return fmt.Errorf("serialization failed: %s", err)
+	}
+	if _, err := c.conn.Write(b); err != nil {
+		s.removeClient(c)
+	}
+}
+
+func (s *Server) SendToAll(m msg.Msg) error {
+	b, err := msg.Serialize(m)
+	if err != nil {
+		return fmt.Errorf("serialization failed: %s", err)
+	}
+
+	for _, client := range s.clients {
+		if _, err := client.conn.Write(b); err != nil {
+			s.removeClient(client)
+		}
+	}
+	return nil
+}
+
 func (s *Server) tcpServer() {
 	defer s.wg.Done()
 
@@ -131,28 +155,6 @@ func (s *Server) tcpServer() {
 		case <-s.stop:
 			l.Close()
 			return
-		}
-	}()
-
-	// TODO
-	go func() {
-		defer s.wg.Done()
-		for {
-			select {
-			case <-s.stop:
-				return
-			case m := <-s.out:
-				for _, client := range s.clients {
-					b, err := msg.Serialize(m)
-					if err != nil {
-						log.Errorf("Failed to serialize outgoing message: %s", err)
-						break
-					}
-					if _, err := client.conn.Write(b); err != nil {
-						s.removeClient(client)
-					}
-				}
-			}
 		}
 	}()
 
@@ -275,7 +277,10 @@ func (s *Server) handleChatMessage(req *Request) error {
 		Message:   *chatMsg,
 	}
 
-	s.out <- msg.Msg(res)
+	if err := s.SendToAll(res); err != nil {
+		return fmt.Errorf("failed to respond: %s")
+	}
+
 	log.Debugf("Processed new chat message by %s", req.sender)
 
 	return nil
