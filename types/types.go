@@ -10,10 +10,10 @@ const (
 )
 
 type Channel struct {
-	ID uint16      `json:"channelId"`
-	ParentID  uint16      `json:"parentId"`
-	Name      string      `json:"name"`
-	Type      ChannelType `json:"type"`
+	ID       uint16      `json:"channelId"`
+	ParentID uint16      `json:"parentId"`
+	Name     string      `json:"name"`
+	Type     ChannelType `json:"type"`
 }
 
 type Client struct {
