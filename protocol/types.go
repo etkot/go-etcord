@@ -24,9 +24,9 @@ func (mt MsgType) String() string {
 	case LoginType:
 		return "Login"
 	case ClientConnectedType:
-		return "ClientConnectedType"
+		return "ClientConnected"
 	case ClientDisconnectedType:
-		return "ClientDisconnectedType"
+		return "ClientDisconnected"
 	case GetClientsType:
 		return "GetClients"
 	case GetChannelsType:

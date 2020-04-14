@@ -18,7 +18,7 @@ type Server struct {
 	stop         chan struct{}
 	port         string
 	lastClientID int
-	clients      map[string]*Client
+	clients      map[uint16]*Client
 	channels     map[uint16]*Channel
 }
 
@@ -26,7 +26,7 @@ func NewServer(port string) *Server {
 	return &Server{
 		port:     port,
 		stop:     make(chan struct{}),
-		clients:  make(map[string]*Client),
+		clients:  make(map[uint16]*Client),
 		channels: make(map[uint16]*Channel),
 	}
 }
@@ -57,7 +57,8 @@ type Channel struct {
 
 	mu            sync.RWMutex
 	lastMessageID int
-	messages      map[uint16]*protocol.ChatMessage
+	messageIDs    map[uint16]*protocol.ChatMessage
+	messages      []*protocol.ChatMessage
 }
 
 func NewChannel(channelType protocol.ChannelType) *Channel {
@@ -67,7 +68,7 @@ func NewChannel(channelType protocol.ChannelType) *Channel {
 		ParentID: 0,
 		Name:     "txt",
 		Type:     channelType,
-		messages: make(map[uint16]*protocol.ChatMessage),
+		messageIDs: make(map[uint16]*protocol.ChatMessage),
 	}
 }
 
@@ -162,6 +163,7 @@ func (s *Server) tcpServer() {
 			if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
 				continue
 			}
+			// Listener is closed
 			break
 		}
 		go s.handleConn(c)
@@ -217,14 +219,14 @@ func (s *Server) addClient(c *Client) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.clients[c.conn.RemoteAddr().String()] = c
+	s.clients[c.UserID] = c
 }
 
 func (s *Server) removeClient(c *Client) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.clients, c.conn.RemoteAddr().String())
+	delete(s.clients, c.UserID)
 }
 
 func (s *Server) msgHandler(req *Request) error {
@@ -234,6 +236,10 @@ func (s *Server) msgHandler(req *Request) error {
 	switch req.msg.(type) {
 	case *protocol.LoginRequest:
 		err = s.handleLoginRequest(req)
+	case *protocol.GetClientsRequest:
+		err = s.handleGetClientsRequest(req)
+	case *protocol.GetChatHistoryRequest:
+		err = s.handleGetChatHistoryRequest(req)
 	case *protocol.ChatMessageRequest:
 		err = s.handleChatMessage(req)
 	}
@@ -246,6 +252,103 @@ func (s *Server) handleLoginRequest(req *Request) error {
 	req.sender.Name = m.Name
 	log.Debugf("Set name of %s to %s", req.sender.conn.LocalAddr().String(), m.Name)
 	return nil
+}
+
+func (s *Server) handleGetClientsRequest(req *Request) error {
+	m := req.msg.(*protocol.GetClientsRequest)
+
+	var clients []protocol.Client
+
+	switch m.Type {
+	case protocol.GetClientsAll:
+		for _, c := range s.clients {
+			clients = append(clients, protocol.Client{
+				UserID: c.UserID,
+				Name:   c.Name,
+			})
+		}
+
+	case protocol.GetClientsOne:
+		c, ok := s.clients[m.ClientID]
+		if !ok {
+			return fmt.Errorf("client does not exist")
+		}
+		clients = append(clients, protocol.Client{
+			UserID: c.UserID,
+			Name:   c.Name,
+		})
+
+	case protocol.GetClientsMany:
+		for _, id := range m.ClientIDs {
+			c, ok := s.clients[id]
+			if !ok {
+				log.Debugf("client %d does not exist", id)
+				continue
+			}
+			clients = append(clients, protocol.Client{
+				UserID: c.UserID,
+				Name:   c.Name,
+			})
+		}
+	}
+
+	res := &protocol.GetClientsResponse{
+		Count:   uint16(len(clients)),
+		Clients: clients,
+	}
+
+	if err := s.SendToOne(req.sender, res); err != nil {
+		return fmt.Errorf("failed to respond: %s", err)
+	}
+}
+
+func (s *Server) handleGetChannelsRequest(req *Request) error {
+	var channels []protocol.Channel
+	for _, chn := range s.channels {
+		channels = append(channels, protocol.Channel{
+			ID:       chn.ID,
+			ParentID: chn.ParentID,
+			Name:     chn.Name,
+			Type:     chn.Type,
+		})
+	}
+
+	res := &protocol.GetChannelsResponse{
+		Count:    uint16(len(channels)),
+		Channels: channels,
+	}
+
+	if err := s.SendToOne(req.sender, res); err != nil {
+		return fmt.Errorf("failed to respond: %s", err)
+	}
+}
+
+func (s *Server) handleGetChatHistoryRequest(req *Request) error {
+	m := req.msg.(*protocol.GetChatHistoryRequest)
+
+	chn, ok := s.channels[m.ChannelID]
+	if !ok {
+		return fmt.Errorf("channel %d does not exist", m.ChannelID)
+	}
+
+	// TODO handle offsetID
+	var chatMessages []protocol.ChatMessage
+	for i, cm := range chn.messages {
+		if i == int(m.Count) {
+			break
+		}
+		chatMessages = append(chatMessages, *cm)
+	}
+
+	res := &protocol.GetChatHistoryResponse{
+		ChannelID: chn.ID,
+		Count:     uint16(len(chatMessages)),
+		Messages:  chatMessages,
+	}
+
+	if err := s.SendToOne(req.sender, res); err != nil {
+		return fmt.Errorf("failed to respond: %s", err)
+	}
 }
 
 func (s *Server) handleChatMessage(req *Request) error {
@@ -267,7 +370,9 @@ func (s *Server) handleChatMessage(req *Request) error {
 		MessageID: uint16(chn.lastMessageID),
 		Content:   m.Content,
 	}
-	chn.messages[chatMsg.MessageID] = chatMsg
+
+	chn.messageIDs[chatMsg.MessageID] = chatMsg
+	chn.messages = append(chn.messages, chatMsg)
 
 	res := &protocol.ChatMessageResponse{
 		ChannelID: chn.ID,

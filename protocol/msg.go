@@ -211,7 +211,17 @@ type GetChatHistoryResponse struct {
 	Messages  []ChatMessage `json:"messages"`
 }
 
-func (m *GetChatHistoryResponse) Serialize() []byte { return nil } // TODO
+func (m *GetChatHistoryResponse) Serialize() []byte {
+	buf := common.NewBuffer(make([]byte, 0, 4)) // TODO
+	buf.WriteUint16(m.ChannelID)
+	buf.WriteUint16(m.Count)
+	for _, cm := range m.Messages {
+		buf.WriteUint16(cm.SenderID)
+		buf.WriteUint16(cm.MessageID)
+		buf.WriteNullTerminatedString(cm.SenderName)
+		buf.WriteNullTerminatedString(cm.Content)
+	}
+}
 
 func (m *GetChatHistoryResponse) Deserialize(common.Buffer) error { return nil } // TODO
 
