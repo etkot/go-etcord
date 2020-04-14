@@ -5,59 +5,15 @@ import (
 	"math"
 
 	"etcord/common"
-	"etcord/types"
 )
 
 const (
 	PacketHeaderLen = 3 // length + id fields
 )
 
-type MsgType uint8
-
-const (
-	ErrorType MsgType = iota
-	LoginType
-	ClientConnectedType
-	ClientDisconnectedType
-	GetClientsType
-	GetChannelsType
-	GetChatHistoryType
-
-	ChatMessageType MsgType = iota + 10
-
-	VoiceChannelJoinType MsgType = iota + 20
-	VoiceChannelLeaveType
-)
-
 type Serializer interface {
 	Serialize() []byte
 	Deserialize(common.Buffer) error
-}
-
-func (mt MsgType) String() string {
-	switch mt {
-	case ErrorType:
-		return "Error"
-	case LoginType:
-		return "Login"
-	case ClientConnectedType:
-		return "ClientConnectedType"
-	case ClientDisconnectedType:
-		return "ClientDisconnectedType"
-	case GetClientsType:
-		return "GetClients"
-	case GetChannelsType:
-		return "GetChannels"
-	case GetChatHistoryType:
-		return "GetChatHistoryType"
-	case ChatMessageType:
-		return "ChatMessage"
-	case VoiceChannelJoinType:
-		return "VoiceChannelJoin"
-	case VoiceChannelLeaveType:
-		return "VoiceChannelLeave"
-	}
-	return ""
 }
 
 // Serialize serializes an Etcord protocol message to a raw packet
@@ -203,8 +159,8 @@ func (m *GetClientsRequest) Deserialize(buf common.Buffer) error {
 }
 
 type GetClientsResponse struct {
-	Count   uint16         `json:"count"`
-	Clients []types.Client `json:"clients"`
+	Count   uint16   `json:"count"`
+	Clients []Client `json:"clients"`
 }
 
 func (m *GetClientsResponse) Serialize() []byte { return nil } // TODO
@@ -219,8 +175,8 @@ func (m *GetChannelsRequest) Serialize() []byte { return nil } // TODO
 func (m *GetChannelsRequest) Deserialize(common.Buffer) error { return nil }
 
 type GetChannelsResponse struct {
-	Count    uint16          `json:"count"`
-	Channels []types.Channel `json:"channels"`
+	Count    uint16    `json:"count"`
+	Channels []Channel `json:"channels"`
 }
 
 func (m *GetChannelsResponse) Serialize() []byte { return nil } // TODO
@@ -250,9 +206,9 @@ func (m *GetChatHistoryRequest) Deserialize(buf common.Buffer) error {
 }
 
 type GetChatHistoryResponse struct {
-	ChannelID uint16              `json:"channelId"`
-	Count     uint16              `json:"count"`
-	Messages  []types.ChatMessage `json:"messages"`
+	ChannelID uint16        `json:"channelId"`
+	Count     uint16        `json:"count"`
+	Messages  []ChatMessage `json:"messages"`
 }
 
 func (m *GetChatHistoryResponse) Serialize() []byte { return nil } // TODO
@@ -284,8 +240,8 @@ func (m *ChatMessageRequest) Deserialize(buf common.Buffer) error {
 }
 
 type ChatMessageResponse struct {
-	ChannelID uint16            `json:"channelId"`
-	Message   types.ChatMessage `json:"message"`
+	ChannelID uint16      `json:"channelId"`
+	Message   ChatMessage `json:"message"`
 }
 
 func (m *ChatMessageResponse) Serialize() []byte {

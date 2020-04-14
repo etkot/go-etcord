@@ -1,7 +1,6 @@
 package server
 
 import (
-	"etcord/types"
 	"fmt"
 	"net"
 	"sync"
@@ -44,31 +43,31 @@ func NewRequest(client *Client) *Request {
 }
 
 type Client struct {
-	UserID uint16 `json:"userId"`
-	Name   string `json:"name"`
+	UserID uint16
+	Name   string
 
 	conn net.Conn
 }
 
 type Channel struct {
-	ID       uint16            `json:"channelId"`
-	ParentID uint16            `json:"parentId"`
-	Name     string            `json:"name"`
-	Type     types.ChannelType `json:"type"`
+	ID       uint16
+	ParentID uint16
+	Name     string
+	Type     protocol.ChannelType
 
 	mu            sync.RWMutex
 	lastMessageID int
-	messages      map[uint16]*types.ChatMessage
+	messages      map[uint16]*protocol.ChatMessage
 }
 
-func NewChannel(channelType types.ChannelType) *Channel {
+func NewChannel(channelType protocol.ChannelType) *Channel {
 	// TODO
 	return &Channel{
 		ID:       0,
 		ParentID: 0,
 		Name:     "txt",
 		Type:     channelType,
-		messages: make(map[uint16]*types.ChatMessage),
+		messages: make(map[uint16]*protocol.ChatMessage),
 	}
 }
 
@@ -105,7 +104,7 @@ func (s *Server) NewClient(conn net.Conn) *Client {
 func (s *Server) AddChannel() *Channel {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	chn := NewChannel(types.TextChannelType)
+	chn := NewChannel(protocol.TextChannelType)
 	s.channels[chn.ID] = chn
 	return chn
 }
@@ -256,7 +255,7 @@ func (s *Server) handleChatMessage(req *Request) error {
 		return fmt.Errorf("channel with ID %d does not exist", m.ChannelID)
 	}
 
-	if chn.Type != types.TextChannelType {
+	if chn.Type != protocol.TextChannelType {
 		return fmt.Errorf("channel type is wrong")
 	}
 
@@ -264,7 +263,7 @@ func (s *Server) handleChatMessage(req *Request) error {
 	defer chn.mu.Unlock()
 
 	chn.lastMessageID++
-	chatMsg := &types.ChatMessage{
+	chatMsg := &protocol.ChatMessage{
 		MessageID: uint16(chn.lastMessageID),
 		Content:   m.Content,
 	}
@@ -276,10 +275,10 @@ func (s *Server) handleChatMessage(req *Request) error {
 	}
 
 	if err := s.SendToAll(res); err != nil {
-		return fmt.Errorf("failed to respond: %s")
+		return fmt.Errorf("failed to respond: %s", err)
 	}
 
-	log.Debugf("Processed new chat message by %s", req.sender)
+	log.Debugf("Processed new chat message by %s", req.sender.Name)
 
 	return nil
 }
