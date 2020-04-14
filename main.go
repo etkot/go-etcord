@@ -19,7 +19,7 @@ func main() {
 	log.SetLevel(log.TraceLevel)
 
 	// TODO
-	s := server.NewServer(os.Args[2])
+	s := server.NewServer(os.Args[1])
 	s.AddChannel()
 	s.Start()
 
