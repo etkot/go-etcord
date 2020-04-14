@@ -21,7 +21,7 @@ type Client struct {
 	Name   string `json:"name"`
 }
 
-type Message struct {
+type ChatMessage struct {
 	MessageID  uint16 `json:"messageId"`
 	SenderID   uint16 `json:"senderId"`
 	SenderName string `json:"senderName"`

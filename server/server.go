@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"etcord/common"
-	"etcord/msg"
+	"etcord/protocol"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -34,7 +34,7 @@ func NewServer(port string) *Server {
 
 type Request struct {
 	sender *Client
-	msg    msg.Msg
+	msg    protocol.Serializer
 }
 
 func NewRequest(client *Client) *Request {
@@ -58,7 +58,7 @@ type Channel struct {
 
 	mu            sync.RWMutex
 	lastMessageID int
-	messages      map[uint16]*types.Message
+	messages      map[uint16]*types.ChatMessage
 }
 
 func NewChannel(channelType types.ChannelType) *Channel {
@@ -68,7 +68,7 @@ func NewChannel(channelType types.ChannelType) *Channel {
 		ParentID: 0,
 		Name:     "txt",
 		Type:     channelType,
-		messages: make(map[uint16]*types.Message),
+		messages: make(map[uint16]*types.ChatMessage),
 	}
 }
 
@@ -95,7 +95,6 @@ func (s *Server) NewClient(conn net.Conn) *Client {
 
 	c := &Client{
 		UserID: uint16(s.lastClientID),
-		Name:   "teme", // TODO
 		conn:   conn,
 	}
 	s.lastClientID++
@@ -111,18 +110,19 @@ func (s *Server) AddChannel() *Channel {
 	return chn
 }
 
-func (s *Server) SendToOne(c *Client, m msg.Msg) error {
-	b, err := msg.Serialize(m)
+func (s *Server) SendToOne(c *Client, m protocol.Serializer) error {
+	b, err := protocol.Serialize(m)
 	if err != nil {
 		return fmt.Errorf("serialization failed: %s", err)
 	}
 	if _, err := c.conn.Write(b); err != nil {
 		s.removeClient(c)
 	}
+	return nil
 }
 
-func (s *Server) SendToAll(m msg.Msg) error {
-	b, err := msg.Serialize(m)
+func (s *Server) SendToAll(m protocol.Serializer) error {
+	b, err := protocol.Serialize(m)
 	if err != nil {
 		return fmt.Errorf("serialization failed: %s", err)
 	}
@@ -192,7 +192,7 @@ func (s *Server) handleConn(conn net.Conn) {
 				break
 			}
 			req := NewRequest(client)
-			if req.msg, err = msg.Deserialize(buf); err != nil {
+			if req.msg, err = protocol.Deserialize(buf); err != nil {
 				log.Errorf("Failed to deserialize msg from buffer: %s", err)
 				break
 			}
@@ -229,13 +229,13 @@ func (s *Server) removeClient(c *Client) {
 }
 
 func (s *Server) msgHandler(req *Request) error {
-	log.Debugf("Recv %s", msg.Type(msg.GetPacketID(req.msg)))
+	log.Debugf("Recv %s", protocol.GetMsgType(req.msg))
 
 	var err error
 	switch req.msg.(type) {
-	case *msg.LoginRequest:
+	case *protocol.LoginRequest:
 		err = s.handleLoginRequest(req)
-	case *msg.ChatMessageRequest:
+	case *protocol.ChatMessageRequest:
 		err = s.handleChatMessage(req)
 	}
 
@@ -243,14 +243,14 @@ func (s *Server) msgHandler(req *Request) error {
 }
 
 func (s *Server) handleLoginRequest(req *Request) error {
-	m := req.msg.(*msg.LoginRequest)
+	m := req.msg.(*protocol.LoginRequest)
 	req.sender.Name = m.Name
 	log.Debugf("Set name of %s to %s", req.sender.conn.LocalAddr().String(), m.Name)
 	return nil
 }
 
 func (s *Server) handleChatMessage(req *Request) error {
-	m := req.msg.(*msg.ChatMessageRequest)
+	m := req.msg.(*protocol.ChatMessageRequest)
 	chn, ok := s.channels[m.ChannelID]
 	if !ok {
 		return fmt.Errorf("channel with ID %d does not exist", m.ChannelID)
@@ -264,13 +264,13 @@ func (s *Server) handleChatMessage(req *Request) error {
 	defer chn.mu.Unlock()
 
 	chn.lastMessageID++
-	chatMsg := &types.Message{
+	chatMsg := &types.ChatMessage{
 		MessageID: uint16(chn.lastMessageID),
 		Content:   m.Content,
 	}
 	chn.messages[chatMsg.MessageID] = chatMsg
 
-	res := &msg.ChatMessageResponse{
+	res := &protocol.ChatMessageResponse{
 		ChannelID: chn.ID,
 		Message:   *chatMsg,
 	}

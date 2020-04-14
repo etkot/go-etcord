@@ -1,21 +1,21 @@
-package msg
+package protocol
 
 import (
-	"etcord/types"
 	"fmt"
 	"math"
 
 	"etcord/common"
+	"etcord/types"
 )
 
 const (
 	PacketHeaderLen = 3 // length + id fields
 )
 
-type Type uint8
+type MsgType uint8
 
 const (
-	ErrorType Type = iota
+	ErrorType MsgType = iota
 	LoginType
 	ClientConnectedType
 	ClientDisconnectedType
@@ -23,19 +23,18 @@ const (
 	GetChannelsType
 	GetChatHistoryType
 
-	ChatMessageType Type = iota + 10
+	ChatMessageType MsgType = iota + 10
 
-	VoiceChannelJoinType Type = iota + 20
+	VoiceChannelJoinType MsgType = iota + 20
 	VoiceChannelLeaveType
 )
 
-type Msg interface {
+type Serializer interface {
 	Serialize() []byte
 	Deserialize(common.Buffer) error
-	//String() string
 }
 
-func (mt Type) String() string {
+func (mt MsgType) String() string {
 	switch mt {
 	case ErrorType:
 		return "Error"
@@ -62,7 +61,7 @@ func (mt Type) String() string {
 }
 
 // Serialize serializes an Etcord protocol message to a raw packet
-func Serialize(m Msg) ([]byte, error) {
+func Serialize(m Serializer) ([]byte, error) {
 	mb := m.Serialize()
 	if len(mb) > math.MaxUint16 {
 		return nil, fmt.Errorf("packet content length overflows uint16")
@@ -70,14 +69,14 @@ func Serialize(m Msg) ([]byte, error) {
 
 	buf := common.NewBuffer(make([]byte, 0, PacketHeaderLen+len(mb)))
 	buf.WriteUint16(1 + uint16(len(mb)))
-	buf.Write([]byte{GetPacketID(m)})
+	buf.Write([]byte{uint8(GetMsgType(m))})
 	buf.Write(mb)
 
 	return buf.Bytes(), nil
 }
 
 // Deserializes deserializes a raw packet to an Etcord protocol message
-func Deserialize(tmp common.Buffer) (Msg, error) {
+func Deserialize(tmp common.Buffer) (Serializer, error) {
 	msgLen, err := tmp.ReadUint16()
 	if err != nil {
 		return nil, err
@@ -89,10 +88,9 @@ func Deserialize(tmp common.Buffer) (Msg, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := Type(tb)
+	t := MsgType(tb)
 
-	// TODO response deserialization
-	var m Msg
+	var m Serializer
 	switch t {
 	case ErrorType:
 		m = &Error{}
@@ -252,9 +250,9 @@ func (m *GetChatHistoryRequest) Deserialize(buf common.Buffer) error {
 }
 
 type GetChatHistoryResponse struct {
-	ChannelID uint16          `json:"channelId"`
-	Count     uint16          `json:"count"`
-	Messages  []types.Message `json:"messages"`
+	ChannelID uint16              `json:"channelId"`
+	Count     uint16              `json:"count"`
+	Messages  []types.ChatMessage `json:"messages"`
 }
 
 func (m *GetChatHistoryResponse) Serialize() []byte { return nil } // TODO
@@ -286,8 +284,8 @@ func (m *ChatMessageRequest) Deserialize(buf common.Buffer) error {
 }
 
 type ChatMessageResponse struct {
-	ChannelID uint16        `json:"channelId"`
-	Message   types.Message `json:"message"`
+	ChannelID uint16            `json:"channelId"`
+	Message   types.ChatMessage `json:"message"`
 }
 
 func (m *ChatMessageResponse) Serialize() []byte {
@@ -345,32 +343,32 @@ func (m *VoiceChannelJoinResponse) Serialize() []byte { return nil } // TODO
 
 func (m *VoiceChannelJoinResponse) Deserialize(common.Buffer) error { return nil } // TODO
 
-func GetPacketID(m Msg) uint8 {
+func GetMsgType(m Serializer) MsgType {
 	switch m.(type) {
 	case *Error:
-		return uint8(ErrorType)
+		return ErrorType
 	case *LoginRequest:
-		return uint8(LoginType)
+		return LoginType
 	case *GetClientsRequest:
-		return uint8(GetClientsType)
+		return GetClientsType
 	case *GetClientsResponse:
-		return uint8(GetClientsType)
+		return GetClientsType
 	case *GetChannelsRequest:
-		return uint8(GetChannelsType)
+		return GetChannelsType
 	case *GetChannelsResponse:
-		return uint8(GetChannelsType)
+		return GetChannelsType
 	case *GetChatHistoryRequest:
-		return uint8(GetChatHistoryType)
+		return GetChatHistoryType
 	case *GetChatHistoryResponse:
-		return uint8(GetChatHistoryType)
+		return GetChatHistoryType
 	case *ChatMessageRequest:
-		return uint8(ChatMessageType)
+		return ChatMessageType
 	case *ChatMessageResponse:
-		return uint8(ChatMessageType)
+		return ChatMessageType
 	case *VoiceChannelJoinRequest:
-		return uint8(VoiceChannelJoinType)
+		return VoiceChannelJoinType
 	case *VoiceChannelJoinResponse:
-		return uint8(VoiceChannelJoinType)
+		return VoiceChannelJoinType
 	}
 	return 0
 }
